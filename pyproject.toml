@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bsf"
+version = "0.1.0"
+description = "Block-Sparse Featurizers: capturing visual concept manifolds"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Thomas Fel" },
+    { name = "Matthew Kowal" },
+    { name = "Mozes Jacobs" },
+    { name = "Dron Hazra" },
+    { name = "Usha Bhalla" },
+]
+dependencies = [
+    "torch",
+    "numpy",
+    "scikit-learn",
+    "matplotlib",
+    "einops",
+    "transformers",
+]
+
+[project.urls]
+Repository = "https://github.com/goodfire-ai/block-sparse-featurizer"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bsf"]

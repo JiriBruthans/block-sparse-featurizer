@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Local experiment scratch (keep generated outputs out of the repo)
+scratch/
+outputs/
+*.log
+
+# NOTE: data assets that ship with the repo are tracked on purpose and are
+# intentionally NOT ignored: rabbit.npz, bsf/pos_mean.npy, assets/*.png
