@@ -30,7 +30,7 @@ from .base import BSF, unit_blocks
 # Default variant: hard block gate with STE (block JumpReLU)
 # ---------------------------------------------------------------------------
 
-class _BlockJumpReLU(torch.autograd.Function):
+class BlockJumpReLU(torch.autograd.Function):
     """Hard block gate H(||a_g|| - theta) with a straight-through pseudo-derivative
     for theta (rectangle kernel). Passes no gradient to ||a_g|| -- the encoder
     learns through the magnitude path z = a * gate."""
@@ -52,7 +52,7 @@ class _BlockJumpReLU(torch.autograd.Function):
 # Paper variant: group-lasso soft-threshold (proximal operator of ℓ_{2,1})
 # ---------------------------------------------------------------------------
 
-def _block_soft_threshold(a, theta):
+def block_soft_threshold(a, theta):
     """sh_θ(a)_g = max(1 - θ/||a_g||_2, 0) * a_g  (proximal op of ℓ_{2,1})."""
     gn = a.norm(dim=-1, keepdim=True).clamp_min(1e-8)
     scale = (1.0 - theta / gn).clamp_min(0.0)
@@ -106,11 +106,11 @@ class GroupLassoBSF(BSF):
     # Default variant helpers
     # ------------------------------------------------------------------
 
-    def _theta_default(self):
+    def theta_default(self):
         return F.softplus(self.gain * self.raw_theta)
 
     @torch.no_grad()
-    def _init_theta(self, gn):
+    def init_theta(self, gn):
         """Cold-start: place theta so ~target_l0 blocks fire initially."""
         q = 1.0 - self.target_l0 / self.n_groups
         thr = torch.quantile(gn.flatten(), q).clamp_min(1e-3)
@@ -118,39 +118,39 @@ class GroupLassoBSF(BSF):
         self.bandwidth.copy_(gn.std() * 0.5 + 1e-6)
         self.inited.fill_(True)
 
-    def _gate_default(self, gn):
+    def gate_default(self, gn):
         if self.training and not bool(self.inited):
-            self._init_theta(gn)
-        return _BlockJumpReLU.apply(gn, self._theta_default(), float(self.bandwidth))
+            self.init_theta(gn)
+        return BlockJumpReLU.apply(gn, self.theta_default(), float(self.bandwidth))
 
     # ------------------------------------------------------------------
     # Shared
     # ------------------------------------------------------------------
 
-    def _preact(self, x):
+    def preact(self, x):
         return (x @ self.W_enc + self.b_enc).reshape(-1, self.n_groups, self.group_size)
 
     def encode(self, x):
-        a = self._preact(x)
+        a = self.preact(x)
         if self.paper_version:
             theta = self.log_theta.exp()
-            return _block_soft_threshold(a, theta)
+            return block_soft_threshold(a, theta)
         else:
-            return a * self._gate_default(a.norm(dim=-1)).unsqueeze(-1)
+            return a * self.gate_default(a.norm(dim=-1)).unsqueeze(-1)
 
     def loss(self, x, target=None):
         target = x if target is None else target
-        a = self._preact(x)
+        a = self.preact(x)
 
         if self.paper_version:
             theta = self.log_theta.exp()
-            z = _block_soft_threshold(a, theta)
+            z = block_soft_threshold(a, theta)
             recon = (target - self.decode(z)).pow(2).mean()
             l21 = z.norm(dim=-1).sum(-1).mean()  # ℓ_{2,1} penalty
             l0 = (z.norm(dim=-1) > 1e-6).float().sum(-1).mean()  # for logging
             return recon + self.coef * l21, {'recon': recon.item(), 'l0': l0.item()}
         else:
-            gate = self._gate_default(a.norm(dim=-1))
+            gate = self.gate_default(a.norm(dim=-1))
             z = a * gate.unsqueeze(-1)
             recon = (target - self.decode(z)).pow(2).mean()
             l0 = gate.sum(-1).mean()

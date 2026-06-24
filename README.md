@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/goodfire_logo.png" height="48" alt="Goodfire AI"/>
+<img src="assets/goodfire_logo.png" height="64" alt="Goodfire AI"/>
 
 # Block-Sparse Featurizers
 
@@ -95,12 +95,14 @@ Each notebook locates the repo root automatically and runs end-to-end. Computing
 **Thomas Fel** · **Matthew Kowal** · **Mozes Jacobs** · **Dron Hazra** · **Usha Bhalla** *(equal contribution)*
 
 Lee Sharkey · Lucius Bushnaq · Satchel Grant · Tal Haklay · Thomas Icard ·
-Michael Pearce · Daniel Wurgaft · Aiden Swann · Fenil Doshi · Siddharth Boppana ·
-Curt Tigges · Nick Cammarata · Thomas Serre · Vasudev Shyam · Owen Lewis · Thomas McGrath
+Can Rager · Michael Pearce · Daniel Wurgaft · Aiden Swann · Fenil Doshi ·
+Siddharth Boppana · Curt Tigges · Nick Cammarata · Thomas Serre · Vasudev Shyam · Owen Lewis
 
-**Jack Merullo** · **Ekdeep Singh Lubana** · **Atticus Geiger** *(equal senior contribution)*
+Thomas McGrath · **Jack Merullo** · **Ekdeep Singh Lubana** · **Atticus Geiger** *(equal senior contribution)*
 
-<img src="assets/goodfire_logo.png" height="20" alt="Goodfire AI"/> &nbsp; · &nbsp; Stanford University &nbsp; · &nbsp; Harvard University &nbsp; · &nbsp; Brown University
+<img src="assets/goodfire_logo.png" height="32" alt="Goodfire"/>
+
+Goodfire &nbsp;·&nbsp; Harvard University &nbsp;·&nbsp; Stanford University &nbsp;·&nbsp; Brown University
 
 ---
 

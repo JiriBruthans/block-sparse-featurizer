@@ -19,7 +19,7 @@ def recon_r2(model, x):
 
 
 @torch.no_grad()
-def _l0_dead(model, x):
+def l0_dead(model, x):
     """Mean active blocks per token, and number of blocks that never fire."""
     # (N, G)
     active = model.encode(x).norm(dim=-1) > 1e-6
@@ -29,18 +29,17 @@ def _l0_dead(model, x):
 
 
 def train(model, x, *, epochs=40, lr=4e-4, batch_size=2048, snr=0.1,
-          device=None, log_every=5, seed=0):
+          device=None, log_every=5):
     """Train `model` on activations `x` (N, d). Returns the trained model."""
     device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     x = torch.as_tensor(x, dtype=torch.float32)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
-    gen = torch.Generator().manual_seed(seed)
     n = x.shape[0]
 
     for ep in range(1, epochs + 1):
         model.train()
-        perm = torch.randperm(n, generator=gen)
+        perm = torch.randperm(n)
         running = 0.0
         n_batches = 0
         for i in range(0, n - batch_size + 1, batch_size):
@@ -57,9 +56,9 @@ def train(model, x, *, epochs=40, lr=4e-4, batch_size=2048, snr=0.1,
 
         if ep == 1 or ep == epochs or ep % log_every == 0:
             model.eval()
-            sub = x[torch.randperm(n, generator=gen)[:20_000]].to(device)
+            sub = x[torch.randperm(n)[:20_000]].to(device)
             r2 = recon_r2(model, sub)
-            l0, dead = _l0_dead(model, sub)
+            l0, dead = l0_dead(model, sub)
             print(f'epoch {ep:3d}/{epochs}   loss={running / n_batches:.4f}   '
                   f'R2={r2:.4f}   L0={l0:.1f}   dead={dead}/{model.n_groups}', flush=True)
     return model
