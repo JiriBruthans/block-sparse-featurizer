@@ -1,15 +1,23 @@
-"""Group-lasso BSF (soft-threshold slot, learned threshold).
+"""Group-lasso BSF — two variants selectable via `paper_version`.
 
-A free linear encoder produces signed per-block codes (no ReLU). A block fires
-when its L2 norm clears a per-block threshold theta, and the full *signed* code
-is kept -- a threshold on the block norm, like the group-lasso soft-threshold,
-but hard (no magnitude shrinkage, which collapses under a norm-constrained
-decoder). theta is learned by a straight-through estimator (the block analogue
-of JumpReLU): the hard gate has no gradient w.r.t. theta, so a rectangle-kernel
-pseudo-derivative carries it. `gain` gives theta a fast effective learning rate
-under the shared single-LR trainer, and an L0 (active-block) penalty `coef` sets
-the sparsity level. theta is initialised from the first training batch so that
-~`target_l0` blocks fire.
+**Default (paper_version=False) — block JumpReLU with STE:**
+    After the paper's release we found this variant trains more reliably.
+    A free linear encoder produces signed per-block codes (no ReLU). A block
+    fires when its L2 norm clears a per-block threshold theta; the full *signed*
+    code is kept (no magnitude shrinkage, which collapses under a norm-constrained
+    decoder). theta is learned by a straight-through estimator (the block analogue
+    of JumpReLU): a rectangle-kernel pseudo-derivative carries the gradient. An
+    L0 (active-block) penalty `coef` sets the sparsity level. theta is
+    initialised from the first training batch so that ~`target_l0` blocks fire.
+
+**Paper version (paper_version=True) — true group-lasso soft-threshold:**
+    Matches Eq. (3) of the BSF paper: sh_θ(a)_g = max(1 - θ/||a_g||, 0) * a_g,
+    the proximal operator of the ℓ_{2,1} norm. Sparsity is induced by shrinkage
+    rather than a hard gate, and an ℓ_{2,1} penalty `coef` is added to the loss.
+    theta is a single scalar; target_l0 is ignored.
+
+Set `paper_version=True` only to reproduce the paper's reported architecture.
+For new experiments the default variant is recommended.
 """
 import torch
 import torch.nn as nn
@@ -18,7 +26,11 @@ import torch.nn.functional as F
 from .base import BSF, unit_blocks
 
 
-class SoftThreshold(torch.autograd.Function):
+# ---------------------------------------------------------------------------
+# Default variant: hard block gate with STE (block JumpReLU)
+# ---------------------------------------------------------------------------
+
+class _BlockJumpReLU(torch.autograd.Function):
     """Hard block gate H(||a_g|| - theta) with a straight-through pseudo-derivative
     for theta (rectangle kernel). Passes no gradient to ||a_g|| -- the encoder
     learns through the magnitude path z = a * gate."""
@@ -36,54 +48,110 @@ class SoftThreshold(torch.autograd.Function):
         return None, -(g * K).sum(0), None
 
 
+# ---------------------------------------------------------------------------
+# Paper variant: group-lasso soft-threshold (proximal operator of ℓ_{2,1})
+# ---------------------------------------------------------------------------
+
+def _block_soft_threshold(a, theta):
+    """sh_θ(a)_g = max(1 - θ/||a_g||_2, 0) * a_g  (proximal op of ℓ_{2,1})."""
+    gn = a.norm(dim=-1, keepdim=True).clamp_min(1e-8)
+    scale = (1.0 - theta / gn).clamp_min(0.0)
+    return a * scale
+
+
+# ---------------------------------------------------------------------------
+# Unified class
+# ---------------------------------------------------------------------------
+
 class GroupLassoBSF(BSF):
-    def __init__(self, d, n_groups, group_size=3, coef=1e-2, target_l0=16, gain=10.0):
+    """Group-lasso block-sparse featurizer.
+
+    Args:
+        paper_version: If True, use the true group-lasso soft-threshold from the
+            paper (Eq. 3).  If False (default), use the block JumpReLU + STE
+            variant found to work better after the paper's release.
+    """
+
+    def __init__(
+        self,
+        d,
+        n_groups,
+        group_size=3,
+        coef=1e-2,
+        target_l0=16,
+        gain=10.0,
+        paper_version=False,
+    ):
         super().__init__(d, n_groups, group_size)
         self.coef = coef
         self.target_l0 = target_l0
         self.gain = gain
+        self.paper_version = paper_version
+
         W = unit_blocks(torch.randn(n_groups * group_size, d), n_groups, group_size)
         self.W_dec = nn.Parameter(W)
-        # tied init
-        self.W_enc = nn.Parameter(W.t().clone())
+        self.W_enc = nn.Parameter(W.t().clone())  # tied init
         self.b_enc = nn.Parameter(torch.zeros(n_groups * group_size))
-        self.raw_theta = nn.Parameter(torch.zeros(n_groups))
-        self.register_buffer('bandwidth', torch.ones(()))
-        self.register_buffer('inited', torch.zeros((), dtype=torch.bool))
 
-    def theta(self):
+        if paper_version:
+            # single scalar threshold, unconstrained parameterisation
+            self.log_theta = nn.Parameter(torch.zeros(()))
+        else:
+            # per-block threshold learned via STE
+            self.raw_theta = nn.Parameter(torch.zeros(n_groups))
+            self.register_buffer('bandwidth', torch.ones(()))
+            self.register_buffer('inited', torch.zeros((), dtype=torch.bool))
+
+    # ------------------------------------------------------------------
+    # Default variant helpers
+    # ------------------------------------------------------------------
+
+    def _theta_default(self):
         return F.softplus(self.gain * self.raw_theta)
-
-    def _preact(self, x):
-        return (x @ self.W_enc + self.b_enc).reshape(-1, self.n_groups, self.group_size)
 
     @torch.no_grad()
     def _init_theta(self, gn):
-        """Place theta in the group-norm distribution so ~target_l0 blocks fire
-        (the JumpReLU cold-start fix: theta must sit inside the STE kernel)."""
+        """Cold-start: place theta so ~target_l0 blocks fire initially."""
         q = 1.0 - self.target_l0 / self.n_groups
         thr = torch.quantile(gn.flatten(), q).clamp_min(1e-3)
-        # undo gain
         self.raw_theta.copy_(torch.log(torch.expm1(thr)) / self.gain)
         self.bandwidth.copy_(gn.std() * 0.5 + 1e-6)
         self.inited.fill_(True)
 
-    def _gate(self, gn):
+    def _gate_default(self, gn):
         if self.training and not bool(self.inited):
             self._init_theta(gn)
-        return SoftThreshold.apply(gn, self.theta(), float(self.bandwidth))
+        return _BlockJumpReLU.apply(gn, self._theta_default(), float(self.bandwidth))
+
+    # ------------------------------------------------------------------
+    # Shared
+    # ------------------------------------------------------------------
+
+    def _preact(self, x):
+        return (x @ self.W_enc + self.b_enc).reshape(-1, self.n_groups, self.group_size)
 
     def encode(self, x):
         a = self._preact(x)
-        return a * self._gate(a.norm(dim=-1)).unsqueeze(-1)
+        if self.paper_version:
+            theta = self.log_theta.exp()
+            return _block_soft_threshold(a, theta)
+        else:
+            return a * self._gate_default(a.norm(dim=-1)).unsqueeze(-1)
 
     def loss(self, x, target=None):
-        # target != x -> denoising
         target = x if target is None else target
         a = self._preact(x)
-        gate = self._gate(a.norm(dim=-1))
-        z = a * gate.unsqueeze(-1)
-        recon = (target - self.decode(z)).pow(2).mean()
-        # active blocks / token
-        l0 = gate.sum(-1).mean()
-        return recon + self.coef * l0, {'recon': recon.item(), 'l0': l0.item()}
+
+        if self.paper_version:
+            theta = self.log_theta.exp()
+            z = _block_soft_threshold(a, theta)
+            recon = (target - self.decode(z)).pow(2).mean()
+            l21 = z.norm(dim=-1).sum(-1).mean()  # ℓ_{2,1} penalty
+            l0 = (z.norm(dim=-1) > 1e-6).float().sum(-1).mean()  # for logging
+            return recon + self.coef * l21, {'recon': recon.item(), 'l0': l0.item()}
+        else:
+            gate = self._gate_default(a.norm(dim=-1))
+            z = a * gate.unsqueeze(-1)
+            recon = (target - self.decode(z)).pow(2).mean()
+            l0 = gate.sum(-1).mean()
+            return recon + self.coef * l0, {'recon': recon.item(), 'l0': l0.item()}

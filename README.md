@@ -111,9 +111,9 @@ Curt Tigges · Nick Cammarata · Thomas Serre · Vasudev Shyam · Owen Lewis · 
   title   = {Structuring Sparsity: Block-Sparse Featurizers Capture Visual Concept Manifolds},
   author  = {Fel, Thomas and Kowal, Matthew and Jacobs, Mozes and Hazra, Dron and Bhalla, Usha and
              Sharkey, Lee and Bushnaq, Lucius and Grant, Satchel and Haklay, Tal and Icard, Thomas and
-             Pearce, Michael and Wurgaft, Daniel and Swann, Aiden and Doshi, Fenil and Boppana, Siddharth and
-             Tigges, Curt and Cammarata, Nick and Serre, Thomas and Shyam, Vasudev and Lewis, Owen and
-             McGrath, Thomas and Merullo, Jack and Lubana, Ekdeep Singh and Geiger, Atticus},
+             Rager, Can and Pearce, Michael and Wurgaft, Daniel and Swann, Aiden and Doshi, Fenil and
+             Boppana, Siddharth and Tigges, Curt and Cammarata, Nick and Serre, Thomas and Shyam, Vasudev and
+             Lewis, Owen and McGrath, Thomas and Merullo, Jack and Lubana, Ekdeep Singh and Geiger, Atticus},
   journal = {arXiv preprint},
   year    = {2025},
   url     = {https://github.com/goodfire-ai/block-sparse-featurizer}
