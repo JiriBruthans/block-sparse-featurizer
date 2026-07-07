@@ -1,6 +1,6 @@
 """Group-lasso BSF — two variants selectable via `paper_version`.
 
-**Default (paper_version=False) — block JumpReLU with STE:**
+Default (paper_version=False) — block JumpReLU with STE:
     After the paper's release we found this variant trains more reliably.
     A free linear encoder produces signed per-block codes (no ReLU). A block
     fires when its L2 norm clears a per-block threshold theta; the full *signed*
@@ -10,7 +10,7 @@
     L0 (active-block) penalty `coef` sets the sparsity level. theta is
     initialised from the first training batch so that ~`target_l0` blocks fire.
 
-**Paper version (paper_version=True) — true group-lasso soft-threshold:**
+Paper version (paper_version=True) — true group-lasso soft-threshold:
     Matches Eq. (3) of the BSF paper: sh_θ(a)_g = max(1 - θ/||a_g||, 0) * a_g,
     the proximal operator of the ℓ_{2,1} norm. Sparsity is induced by shrinkage
     rather than a hard gate, and an ℓ_{2,1} penalty `coef` is added to the loss.
@@ -26,9 +26,6 @@ import torch.nn.functional as F
 from .base import BSF, unit_blocks
 
 
-# ---------------------------------------------------------------------------
-# Default variant: hard block gate with STE (block JumpReLU)
-# ---------------------------------------------------------------------------
 
 class BlockJumpReLU(torch.autograd.Function):
     """Hard block gate H(||a_g|| - theta) with a straight-through pseudo-derivative
@@ -48,20 +45,12 @@ class BlockJumpReLU(torch.autograd.Function):
         return None, -(g * K).sum(0), None
 
 
-# ---------------------------------------------------------------------------
-# Paper variant: group-lasso soft-threshold (proximal operator of ℓ_{2,1})
-# ---------------------------------------------------------------------------
-
 def block_soft_threshold(a, theta):
     """sh_θ(a)_g = max(1 - θ/||a_g||_2, 0) * a_g  (proximal op of ℓ_{2,1})."""
     gn = a.norm(dim=-1, keepdim=True).clamp_min(1e-8)
     scale = (1.0 - theta / gn).clamp_min(0.0)
     return a * scale
 
-
-# ---------------------------------------------------------------------------
-# Unified class
-# ---------------------------------------------------------------------------
 
 class GroupLassoBSF(BSF):
     """Group-lasso block-sparse featurizer.
@@ -102,10 +91,7 @@ class GroupLassoBSF(BSF):
             self.register_buffer('bandwidth', torch.ones(()))
             self.register_buffer('inited', torch.zeros((), dtype=torch.bool))
 
-    # ------------------------------------------------------------------
-    # Default variant helpers
-    # ------------------------------------------------------------------
-
+    
     def theta_default(self):
         return F.softplus(self.gain * self.raw_theta)
 
@@ -123,10 +109,7 @@ class GroupLassoBSF(BSF):
             self.init_theta(gn)
         return BlockJumpReLU.apply(gn, self.theta_default(), float(self.bandwidth))
 
-    # ------------------------------------------------------------------
-    # Shared
-    # ------------------------------------------------------------------
-
+    
     def preact(self, x):
         return (x @ self.W_enc + self.b_enc).reshape(-1, self.n_groups, self.group_size)
 
